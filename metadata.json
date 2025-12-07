@@ -1,0 +1,5 @@
+{
+  "name": "Copy of StatementSync OCR",
+  "description": "Intelligent bank statement OCR and data extraction tool using Gemini Flash. Converts PDF and Image statements into structured CSV data with automated categorization and analysis.",
+  "requestFramePermissions": []
+}
