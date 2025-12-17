@@ -6,11 +6,10 @@
  */
 
 export const getApiKey = (): string | undefined => {
-  // The value is replaced by the bundler (Vite)
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    return process.env.API_KEY;
-  }
-  return undefined;
+  // Vite will replace `process.env.API_KEY` with the actual string value during the build.
+  // We do not check `typeof process` because `process` does not exist in the browser,
+  // but the string replacement happens at compile time.
+  return process.env.API_KEY;
 };
 
 export const hasValidKey = (): boolean => {
