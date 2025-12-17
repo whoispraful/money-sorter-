@@ -156,15 +156,9 @@ const App: React.FC = () => {
 
       } catch (error: any) {
         console.error("Processing Error:", error);
-        let errorMsg = error.message;
+        const errorMsg = error.message || "Unknown error occurred";
         
-        // Friendly Error Mapping
-        const isApiKeyError = errorMsg.includes("API key") || errorMsg.includes("403") || errorMsg.includes("permissions");
-        
-        if (isApiKeyError) {
-          if (errorMsg.includes("missing")) errorMsg = "API Key Missing";
-          else errorMsg = "API Key/Permission Error";
-        }
+        const isApiKeyError = errorMsg.toLowerCase().includes("api key") || errorMsg.includes("403");
 
         setFileQueue(prev => prev.map(f => f.id === tracker.id ? { ...f, status: 'ERROR', errorMessage: errorMsg } : f));
         

@@ -54,7 +54,12 @@ const transactionSchema: Schema = {
 
 export const parseStatement = async (file: File): Promise<Omit<StatementData, 'id'>> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey.includes("API_KEY")) { // Check for empty or unreplaced placeholder
+        throw new Error("API Key is missing or invalid. Check environment variables.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
     const filePart = await fileToGenerativePart(file);
 
     const prompt = `
@@ -134,7 +139,7 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
 
   } catch (error: any) {
     console.error("Gemini Extraction Error:", error);
-    // Propagate the actual error message so the UI can handle API Key errors or Quota limits
+    // Directly propagate meaningful errors
     throw new Error(error.message || "Could not process file. Ensure it is a clear image or PDF.");
   }
 };
