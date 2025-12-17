@@ -7,8 +7,9 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, '.', '');
 
-  // Prioritize VITE_API_KEY, fallback to API_KEY (standard Netlify)
-  const apiKey = env.VITE_API_KEY || env.API_KEY || '';
+  // Prioritize VITE_API_KEY, but ALSO check process.env.API_KEY (system env vars)
+  // This is critical for cloud environments where keys are in the shell environment, not .env files.
+  const apiKey = process.env.API_KEY || env.VITE_API_KEY || env.API_KEY || '';
 
   return {
     plugins: [react()],

@@ -159,13 +159,17 @@ const App: React.FC = () => {
         let errorMsg = error.message;
         
         // Friendly Error Mapping
-        if (errorMsg.includes("API Key")) errorMsg = "API Key Invalid";
-        if (errorMsg.includes("403")) errorMsg = "Check API Key Permissions";
+        const isApiKeyError = errorMsg.includes("API key") || errorMsg.includes("403") || errorMsg.includes("permissions");
+        
+        if (isApiKeyError) {
+          if (errorMsg.includes("missing")) errorMsg = "API Key Missing";
+          else errorMsg = "API Key/Permission Error";
+        }
 
         setFileQueue(prev => prev.map(f => f.id === tracker.id ? { ...f, status: 'ERROR', errorMessage: errorMsg } : f));
         
-        if (error.message.includes("API Key")) {
-            showToast("Critical: API Key configuration error.", "error");
+        if (isApiKeyError) {
+            showToast("Critical: Check API Key configuration.", "error");
         }
       }
     }
