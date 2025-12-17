@@ -55,8 +55,8 @@ const transactionSchema: Schema = {
 export const parseStatement = async (file: File): Promise<Omit<StatementData, 'id'>> => {
   try {
     const apiKey = process.env.API_KEY;
-    if (!apiKey || apiKey.includes("API_KEY")) { // Check for empty or unreplaced placeholder
-        throw new Error("API Key is missing or invalid. Check environment variables.");
+    if (!apiKey || apiKey.includes("API_KEY")) { 
+        throw new Error("API Key is missing. Please check your configuration.");
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -139,7 +139,42 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
 
   } catch (error: any) {
     console.error("Gemini Extraction Error:", error);
-    // Directly propagate meaningful errors
-    throw new Error(error.message || "Could not process file. Ensure it is a clear image or PDF.");
+    
+    let finalMessage = error.message || "Could not process file.";
+    
+    // Robust JSON Error Extraction
+    // Google SDK sometimes throws an Error where the message is a raw JSON string.
+    if (typeof finalMessage === 'string' && (finalMessage.includes("{") || finalMessage.includes("["))) {
+        try {
+            // Attempt to find the JSON object within the error string
+            const firstBrace = finalMessage.indexOf('{');
+            const lastBrace = finalMessage.lastIndexOf('}');
+            
+            if (firstBrace !== -1 && lastBrace !== -1) {
+                const potentialJson = finalMessage.substring(firstBrace, lastBrace + 1);
+                const errorObj = JSON.parse(potentialJson);
+                
+                // Navigate common error structures
+                if (errorObj.error && errorObj.error.message) {
+                    finalMessage = errorObj.error.message;
+                } else if (errorObj.message) {
+                    finalMessage = errorObj.message;
+                }
+            }
+        } catch (e) {
+            // If parsing fails, we stick to the original message
+        }
+    }
+
+    // User-Friendly Error Mapping
+    if (finalMessage.includes("Requests from referer") && finalMessage.includes("blocked")) {
+        finalMessage = "Access Denied: Your API Key is restricted. Please go to Google AI Studio > API Key > Application Restrictions and select 'None' or add this website URL.";
+    } else if (finalMessage.includes("API Key is missing")) {
+        finalMessage = "API Key is missing. Check your environment variables.";
+    } else if (finalMessage.includes("403")) {
+        finalMessage = "Permission Denied (403). Check API Key restrictions.";
+    }
+
+    throw new Error(finalMessage);
   }
 };
