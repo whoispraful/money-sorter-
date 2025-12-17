@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Menu, Globe, Wallet } from 'lucide-react';
+import { RefreshCw, Menu, Globe, Wallet, Sparkles } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import TransactionList from './components/TransactionList';
 import StatsChart from './components/StatsChart';
@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar';
 import ConfirmationModal from './components/ConfirmationModal';
 import { parseStatement } from './services/geminiService';
 import { StatementData, FileTracker, BatchSummary, UserProfile } from './types';
+import { hasValidKey } from './config';
 
 interface ModalConfig {
   isOpen: boolean;
@@ -28,6 +29,7 @@ const App: React.FC = () => {
   const [processedStatements, setProcessedStatements] = useState<StatementData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{message: string, type: ToastType} | null>(null);
+  const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
 
   const [modal, setModal] = useState<ModalConfig>({
     isOpen: false,
@@ -36,6 +38,20 @@ const App: React.FC = () => {
     onConfirm: () => {},
     isDestructive: false
   });
+
+  // Initial check for API Key
+  useEffect(() => {
+    // Check if key is available
+    const hasStaticKey = hasValidKey();
+    const win = window as any;
+    const hasDynamicProvider = !!win.aistudio;
+
+    if (!hasStaticKey && !hasDynamicProvider) {
+        setIsApiKeyMissing(true);
+    } else {
+        setIsApiKeyMissing(false);
+    }
+  }, []);
 
   // Load Data
   useEffect(() => {
@@ -57,12 +73,44 @@ const App: React.FC = () => {
     } catch (error) { console.error("Save Session Error", error); }
   }, [processedStatements]);
 
+  const handleLogin = async (name: string) => {
+    // Check if key is missing (unless we just added it, in which case a reload would have happened via config.ts)
+    if (isApiKeyMissing && !hasValidKey()) {
+        showToast("Please enter an API Key to continue.", "error");
+        return;
+    }
+    
+    // Dynamic check for AI Studio environment if needed
+    const win = window as any;
+    if (win.aistudio && !hasValidKey()) {
+        const hasKey = await win.aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+             try {
+                await win.aistudio.openSelectKey();
+             } catch (e) {
+                console.error(e);
+                showToast("Failed to connect API key", "error");
+                return;
+             }
+        }
+    }
 
-  const handleLogin = (name: string) => {
     const newUser = { name, joinedAt: new Date().toISOString() };
     setUser(newUser);
     localStorage.setItem('ocr_user', JSON.stringify(newUser));
     showToast(`Welcome back, ${name}`, 'success');
+  };
+
+  const handleManualKeyConnect = async () => {
+    const win = window as any;
+    if (win.aistudio) {
+      try {
+        await win.aistudio.openSelectKey();
+        showToast("API Key settings opened", "info");
+      } catch (e) {
+        showToast("Failed to open key settings", "error");
+      }
+    }
   };
 
   const handleLogout = () => {
@@ -76,6 +124,8 @@ const App: React.FC = () => {
         localStorage.clear();
         setFileQueue([]);
         setProcessedStatements([]);
+        // Optional: reload to clear memory of keys
+        window.location.reload();
       }
     });
   };
@@ -155,7 +205,18 @@ const App: React.FC = () => {
         } : f));
 
       } catch (error: any) {
-        setFileQueue(prev => prev.map(f => f.id === tracker.id ? { ...f, status: 'ERROR', errorMessage: error.message } : f));
+        console.error("Processing Error:", error);
+        let errorMsg = error.message;
+        
+        // Friendly Error Mapping
+        if (errorMsg.includes("API Key")) errorMsg = "API Key Invalid";
+        if (errorMsg.includes("403")) errorMsg = "Check API Key Permissions";
+
+        setFileQueue(prev => prev.map(f => f.id === tracker.id ? { ...f, status: 'ERROR', errorMessage: errorMsg } : f));
+        
+        if (error.message.includes("API Key")) {
+            showToast("Critical: API Key configuration error.", "error");
+        }
       }
     }
     setIsProcessing(false);
@@ -175,7 +236,7 @@ const App: React.FC = () => {
 
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-    link.setAttribute('download', `money_sorter_export_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `expense_sorter_export_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -184,57 +245,100 @@ const App: React.FC = () => {
   if (!user) return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-        <LoginScreen onLogin={handleLogin} />
+        
+        {/* Only show overlay if missing AND not in the process of logging in/setting key */}
+        {isApiKeyMissing && !hasValidKey() && (
+            <div className="fixed top-0 left-0 w-full bg-orange-600 text-white text-center py-2 px-4 z-[60] text-sm font-bold shadow-md">
+               ⚠️ Setup Required: Please enter your Google API Key below.
+            </div>
+        )}
+
+        <LoginScreen 
+          onLogin={handleLogin} 
+          onConnectKey={handleManualKeyConnect} 
+          hasApiKeyProvider={!!(window as any).aistudio}
+          isApiKeyMissing={isApiKeyMissing}
+        />
       </>
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900 relative overflow-hidden">
+      
+      {/* Mesh Gradient Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-60">
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-100/50 rounded-full blur-[100px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-violet-100/50 rounded-full blur-[100px]" />
+      </div>
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <ConfirmationModal isOpen={modal.isOpen} title={modal.title} message={modal.message} onConfirm={modal.onConfirm} onClose={() => setModal(prev => ({ ...prev, isOpen: false }))} isDestructive={modal.isDestructive} />
       
       <Sidebar currentView={currentView} onChangeView={(v) => { setCurrentView(v); setIsSidebarOpen(false); }} userName={user.name} onLogout={handleLogout} />
       
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 w-full glass-panel border-b border-slate-200 z-30 px-4 h-16 flex items-center justify-between shadow-sm">
-         <span className="font-extrabold text-xl text-indigo-700 flex items-center gap-2">
-            <Wallet className="w-6 h-6" /> Money Sorter
+      <div className="md:hidden fixed top-0 w-full glass-panel border-b border-slate-200 z-30 px-4 h-16 flex items-center justify-between shadow-sm bg-white/80">
+         <span className="font-extrabold text-xl text-slate-900 flex items-center gap-2">
+            <div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-1.5 rounded-lg text-white">
+               <Wallet className="w-5 h-5" /> 
+            </div>
+            Expense Sorter
          </span>
-         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-700"><Menu className="w-8 h-8" /></button>
+         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-700 hover:bg-slate-100 rounded-lg"><Menu className="w-7 h-7" /></button>
       </div>
+      
+      {/* Mobile Menu Overlay */}
       {isSidebarOpen && (
-        <div className="md:hidden fixed inset-0 z-40 bg-white/95 backdrop-blur-xl pt-24 px-8 animate-in slide-in-from-top-10">
-           <button onClick={() => { setCurrentView('upload'); setIsSidebarOpen(false); }} className="block w-full text-left py-6 text-2xl font-bold border-b border-slate-100">Dashboard</button>
-           <button onClick={() => { setIsSidebarOpen(false); handleLogout(); }} className="block w-full text-left py-6 text-2xl font-bold text-red-600 mt-4">Sign Out</button>
+        <div className="md:hidden fixed inset-0 z-40 bg-white/95 backdrop-blur-xl pt-24 px-8 animate-in slide-in-from-top-10 flex flex-col gap-4">
+           <button onClick={() => { setCurrentView('upload'); setIsSidebarOpen(false); }} className="block w-full text-left py-4 px-6 text-xl font-bold bg-slate-50 rounded-2xl">Dashboard</button>
+           <button onClick={() => { setIsSidebarOpen(false); handleLogout(); }} className="block w-full text-left py-4 px-6 text-xl font-bold text-red-600 bg-red-50 rounded-2xl mt-auto mb-8">Sign Out</button>
         </div>
       )}
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-8 py-10 md:pt-10 pt-24 overflow-y-auto h-screen">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-8 py-10 md:pt-10 pt-24 overflow-y-auto h-screen relative z-10">
           <>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6 animate-in slide-in-from-top-5 duration-700">
               <div>
-                <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Financial Overview</h1>
-                <div className="flex items-center gap-2 mt-2 text-slate-500 text-lg">
-                   <Globe className="w-4 h-4" />
-                   <span>Multi-currency Analysis Active</span>
+                <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
+                    Overview 
+                    <span className="text-base font-medium bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-100 align-middle mt-1 hidden sm:inline-flex">
+                        <Sparkles className="w-3 h-3 mr-1" /> AI Active
+                    </span>
+                </h1>
+                <div className="flex items-center gap-2 mt-3 text-slate-500 font-medium text-lg">
+                   <Globe className="w-4 h-4 text-indigo-500" />
+                   <span>Global Currency Normalization</span>
                 </div>
               </div>
               {processedStatements.length > 0 && (
-                 <button onClick={handleReset} className="flex items-center px-6 py-3 text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl font-bold shadow-lg shadow-indigo-200 transition-all hover:scale-105 active:scale-95" disabled={isProcessing}>
-                    <RefreshCw className={`w-5 h-5 mr-3 ${isProcessing ? 'animate-spin' : ''}`} />
-                    {isProcessing ? 'Working...' : 'New Scan'}
+                 <button onClick={handleReset} className="flex items-center px-6 py-4 text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl font-bold shadow-xl shadow-indigo-200 transition-all hover:scale-105 active:scale-95 group" disabled={isProcessing}>
+                    <RefreshCw className={`w-5 h-5 mr-3 ${isProcessing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                    {isProcessing ? 'Working...' : 'New Analysis'}
                  </button>
                )}
             </div>
 
             {processedStatements.length === 0 && !isProcessing && (
-               <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-10 md:p-14 shadow-xl text-center text-white relative overflow-hidden mb-10">
-                  <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-                  <div className="relative z-10">
-                    <h2 className="text-3xl md:text-4xl font-bold mb-6">Drop your statements here</h2>
-                    <p className="text-indigo-100 mb-10 max-w-xl mx-auto text-lg leading-relaxed">
-                      We automatically extract data from PDFs and images, convert foreign currencies to USD, and organize everything for you.
+               <div className="group relative rounded-[2.5rem] p-10 md:p-16 text-center text-white overflow-hidden mb-12 shadow-2xl transition-all hover:scale-[1.01] duration-500">
+                  {/* Creative Background for Hero */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700"></div>
+                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
+                  <div className="absolute -top-20 -left-20 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl group-hover:opacity-20 transition-opacity duration-700"></div>
+                  <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-indigo-400 opacity-20 rounded-full blur-3xl"></div>
+                  
+                  <div className="relative z-10 max-w-2xl mx-auto">
+                    <h2 className="text-3xl md:text-5xl font-extrabold mb-6 leading-tight drop-shadow-sm">
+                      Financial Clarity in Seconds
+                    </h2>
+                    <p className="text-indigo-100 mb-10 text-lg md:text-xl leading-relaxed font-medium">
+                      Drag & drop your bank statements, receipts, or invoices. We'll use AI to extract, categorize, and convert everything to USD instantly.
                     </p>
+                    
+                    <div className="flex flex-wrap justify-center gap-4 text-sm font-bold opacity-80">
+                        <span className="bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm border border-white/10">PDF & Images</span>
+                        <span className="bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm border border-white/10">Auto-Currency</span>
+                        <span className="bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm border border-white/10">Spending Insights</span>
+                    </div>
                   </div>
                </div>
             )}
@@ -243,21 +347,9 @@ const App: React.FC = () => {
 
             <div className="flex flex-col xl:flex-row gap-8 items-start pb-20">
               {fileQueue.length > 0 && (
-                <div className="w-full xl:w-1/3 xl:sticky xl:top-6 animate-in slide-in-from-left duration-500">
+                <div className="w-full xl:w-1/3 xl:sticky xl:top-6 animate-in slide-in-from-left duration-700 delay-100">
                   <FileStatusList files={fileQueue} />
                 </div>
               )}
               {processedStatements.some(s => s.isValid) && (
-                <div className="w-full xl:w-2/3 space-y-8 animate-in slide-in-from-right duration-500">
-                   <StatsChart transactions={allTransactions} summary={currentBatchSummary} />
-                   <TransactionList transactions={allTransactions} onExport={handleExportAllCSV} />
-                </div>
-              )}
-            </div>
-          </>
-      </main>
-    </div>
-  );
-};
-
-export default App;
+                <div className="w-full xl:w-2/3 space-y-8 animate

@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Transaction, StatementData } from "../types";
+import { getApiKey } from "../config";
 
 // Helper to generate simple IDs
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -54,12 +55,22 @@ const transactionSchema: Schema = {
 
 export const parseStatement = async (file: File): Promise<Omit<StatementData, 'id'>> => {
   try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("API Key is missing. Please check your settings.");
+    const apiKey = getApiKey();
+    
+    // Fallback: If no static key, try to grab from the AI Studio helper if available (for preview environments)
+    let activeKey = apiKey;
+    if (!activeKey) {
+        const win = window as any;
+        if (win.aistudio && await win.aistudio.hasSelectedApiKey()) {
+            throw new Error("API Key not found in environment. Use the 'Connect Key' button in the UI.");
+        }
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    if (!activeKey) {
+        throw new Error("MISSING_API_KEY");
+    }
+
+    const ai = new GoogleGenAI({ apiKey: activeKey });
     const filePart = await fileToGenerativePart(file);
 
     const prompt = `
@@ -96,7 +107,6 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
     const responseText = response.text;
     if (!responseText) throw new Error("No response from Gemini");
 
-    // SANITIZATION: Remove Markdown code blocks if present (fixes common JSON parse errors)
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
 
     let parsed;
@@ -107,7 +117,6 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
       throw new Error("Failed to parse AI response. Please try again.");
     }
 
-    // Validation Check
     if (parsed.isValidFinancialDocument === false) {
        return {
          fileName: file.name,
@@ -122,12 +131,10 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
     const transactions: Transaction[] = rawTransactions.map((t: any) => ({
         ...t,
         id: generateId(),
-        // Fallbacks if AI misses a field
         currency: t.currency || 'USD',
         amountInUSD: t.amountInUSD || t.amount
     }));
 
-    // Calculate summary using NORMALIZED USD amounts
     const totalCredits = transactions.filter(t => t.amountInUSD > 0).reduce((acc, t) => acc + t.amountInUSD, 0);
     const totalDebits = transactions.filter(t => t.amountInUSD < 0).reduce((acc, t) => acc + t.amountInUSD, 0);
 
@@ -144,8 +151,14 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
 
   } catch (error: any) {
     console.error("Gemini Extraction Error:", error);
-    if (error.message.includes("API Key")) {
-        throw error;
+    if (error.message === "MISSING_API_KEY") {
+        throw new Error("API Key config error. Try adding ?key=AIza... to your URL for a quick fix.");
+    }
+    if (error.message.includes("403")) {
+        throw new Error("API Key is invalid or expired.");
+    }
+    if (error.message.includes("API Key not found in environment")) {
+         throw error;
     }
     throw new Error("Could not process file. Ensure it is a clear image or PDF.");
   }

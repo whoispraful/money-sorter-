@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, FileText, Image as ImageIcon, Plus, Lock } from 'lucide-react';
+import { UploadCloud, FileText, Image as ImageIcon, Plus, ShieldCheck } from 'lucide-react';
 
 interface FileUploadProps {
   onFileUpload: (files: FileList) => void;
@@ -29,8 +29,6 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isProcessing }) =
 
   const handleClick = () => {
     if (!isProcessing) {
-      // Clear the value so the same file can be selected again if needed (though we filter duplicates upstream)
-      // This fixes the "onChange not firing for same file" issue.
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -45,17 +43,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isProcessing }) =
   };
 
   return (
-    <div className="w-full mb-10">
+    <div className="w-full mb-12 animate-in fade-in zoom-in duration-500">
       <div
         onClick={handleClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={`
-          relative border-4 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all duration-300 group
-          ${isDragging ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' : 'border-gray-300 hover:border-indigo-400 hover:bg-white'}
-          ${isProcessing ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'bg-white'}
-          shadow-sm hover:shadow-md
+          relative border-3 border-dashed rounded-[2rem] p-12 text-center cursor-pointer transition-all duration-300 group overflow-hidden
+          ${isDragging 
+            ? 'border-indigo-500 bg-indigo-50/50 scale-[1.02] shadow-xl shadow-indigo-100' 
+            : 'border-slate-200 hover:border-indigo-400 hover:bg-white/80 bg-white/50 backdrop-blur-sm'}
+          ${isProcessing ? 'opacity-60 cursor-not-allowed grayscale' : ''}
         `}
       >
         <input
@@ -64,37 +63,44 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isProcessing }) =
           onChange={handleInputChange}
           className="hidden"
           accept="application/pdf,image/png,image/jpeg,image/webp"
-          multiple // Enabled multiple files
+          multiple
           disabled={isProcessing}
         />
 
-        <div className="flex flex-col items-center justify-center space-y-5">
-          <div className="bg-indigo-100 p-5 rounded-full group-hover:scale-110 transition-transform duration-300 relative">
-            <UploadCloud className="w-10 h-10 text-indigo-600" />
+        {/* Decorative background circle */}
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -z-10 transition-opacity duration-500 ${isDragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
+
+        <div className="flex flex-col items-center justify-center space-y-6 relative z-10">
+          <div className={`p-6 rounded-full transition-transform duration-500 relative ${isDragging ? 'scale-110' : 'group-hover:scale-110'}`}>
+            <div className="absolute inset-0 bg-indigo-100 rounded-full animate-pulse opacity-50"></div>
+            <div className="bg-white p-5 rounded-full shadow-lg relative z-10">
+                <UploadCloud className={`w-10 h-10 text-indigo-600 ${isProcessing ? 'animate-bounce' : ''}`} />
+            </div>
             {!isProcessing && (
-               <div className="absolute -top-1 -right-1 bg-indigo-600 rounded-full p-1 border-2 border-white">
+               <div className="absolute -top-1 -right-1 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full p-1.5 border-4 border-white shadow-sm">
                  <Plus className="w-3 h-3 text-white" />
                </div>
             )}
           </div>
 
           <div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">
-              {isProcessing ? 'Processing Batch...' : 'Upload Statements'}
+            <h3 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">
+              {isProcessing ? 'Analyzing Documents...' : 'Upload Bank Statements'}
             </h3>
-            <p className="text-lg text-gray-500 mb-4">
-              Drag & Drop multiple PDFs or Images here
+            <p className="text-lg text-slate-500 mb-6 max-w-md mx-auto leading-relaxed">
+              Drag & Drop PDF or Images here, or click to browse.
             </p>
-             <div className="inline-flex items-center text-xs text-gray-400 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                <Lock className="w-3 h-3 mr-1.5" />
-                Files are processed securely in memory
+             <div className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-4 py-1.5 rounded-full border border-emerald-100">
+                <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+                Processed securely on device
              </div>
           </div>
 
           {!isProcessing && (
-            <div className="flex gap-6 text-sm font-medium text-gray-400 bg-gray-50 px-6 py-2 rounded-full">
-              <span className="flex items-center"><FileText className="w-4 h-4 mr-2" /> Multiple PDFs</span>
-              <span className="flex items-center"><ImageIcon className="w-4 h-4 mr-2" /> Photo Batch</span>
+            <div className="flex flex-wrap justify-center gap-4 text-sm font-semibold text-slate-500">
+              <span className="flex items-center px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100"><FileText className="w-4 h-4 mr-2 text-indigo-500" /> PDF Statements</span>
+              <span className="flex items-center px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100"><ImageIcon className="w-4 h-4 mr-2 text-indigo-500" /> Receipts</span>
+              <span className="flex items-center px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100"><ImageIcon className="w-4 h-4 mr-2 text-indigo-500" /> Invoices</span>
             </div>
           )}
         </div>
