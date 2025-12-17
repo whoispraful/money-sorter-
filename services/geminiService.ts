@@ -75,7 +75,6 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
-        role: 'user',
         parts: [
           filePart,
           { text: prompt }
@@ -135,6 +134,7 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
 
   } catch (error: any) {
     console.error("Gemini Extraction Error:", error);
-    throw new Error("Could not process file. Ensure it is a clear image or PDF.");
+    // Propagate the actual error message so the UI can handle API Key errors or Quota limits
+    throw new Error(error.message || "Could not process file. Ensure it is a clear image or PDF.");
   }
 };
