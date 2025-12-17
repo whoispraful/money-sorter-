@@ -10,7 +10,6 @@ import Sidebar from './components/Sidebar';
 import ConfirmationModal from './components/ConfirmationModal';
 import { parseStatement } from './services/geminiService';
 import { StatementData, FileTracker, BatchSummary, UserProfile } from './types';
-import { hasValidKey } from './config';
 
 interface ModalConfig {
   isOpen: boolean;
@@ -29,7 +28,6 @@ const App: React.FC = () => {
   const [processedStatements, setProcessedStatements] = useState<StatementData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{message: string, type: ToastType} | null>(null);
-  const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
 
   const [modal, setModal] = useState<ModalConfig>({
     isOpen: false,
@@ -38,20 +36,6 @@ const App: React.FC = () => {
     onConfirm: () => {},
     isDestructive: false
   });
-
-  // Initial check for API Key
-  useEffect(() => {
-    // Check if key is available
-    const hasStaticKey = hasValidKey();
-    const win = window as any;
-    const hasDynamicProvider = !!win.aistudio;
-
-    if (!hasStaticKey && !hasDynamicProvider) {
-        setIsApiKeyMissing(true);
-    } else {
-        setIsApiKeyMissing(false);
-    }
-  }, []);
 
   // Load Data
   useEffect(() => {
@@ -74,43 +58,10 @@ const App: React.FC = () => {
   }, [processedStatements]);
 
   const handleLogin = async (name: string) => {
-    // Check if key is missing (unless we just added it, in which case a reload would have happened via config.ts)
-    if (isApiKeyMissing && !hasValidKey()) {
-        showToast("Please enter an API Key to continue.", "error");
-        return;
-    }
-    
-    // Dynamic check for AI Studio environment if needed
-    const win = window as any;
-    if (win.aistudio && !hasValidKey()) {
-        const hasKey = await win.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-             try {
-                await win.aistudio.openSelectKey();
-             } catch (e) {
-                console.error(e);
-                showToast("Failed to connect API key", "error");
-                return;
-             }
-        }
-    }
-
     const newUser = { name, joinedAt: new Date().toISOString() };
     setUser(newUser);
     localStorage.setItem('ocr_user', JSON.stringify(newUser));
     showToast(`Welcome back, ${name}`, 'success');
-  };
-
-  const handleManualKeyConnect = async () => {
-    const win = window as any;
-    if (win.aistudio) {
-      try {
-        await win.aistudio.openSelectKey();
-        showToast("API Key settings opened", "info");
-      } catch (e) {
-        showToast("Failed to open key settings", "error");
-      }
-    }
   };
 
   const handleLogout = () => {
@@ -124,7 +75,6 @@ const App: React.FC = () => {
         localStorage.clear();
         setFileQueue([]);
         setProcessedStatements([]);
-        // Optional: reload to clear memory of keys
         window.location.reload();
       }
     });
@@ -245,20 +195,7 @@ const App: React.FC = () => {
   if (!user) return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-        
-        {/* Only show overlay if missing AND not in the process of logging in/setting key */}
-        {isApiKeyMissing && !hasValidKey() && (
-            <div className="fixed top-0 left-0 w-full bg-orange-600 text-white text-center py-2 px-4 z-[60] text-sm font-bold shadow-md">
-               ⚠️ Setup Required: Please enter your Google API Key below.
-            </div>
-        )}
-
-        <LoginScreen 
-          onLogin={handleLogin} 
-          onConnectKey={handleManualKeyConnect} 
-          hasApiKeyProvider={!!(window as any).aistudio}
-          isApiKeyMissing={isApiKeyMissing}
-        />
+        <LoginScreen onLogin={handleLogin} />
       </>
   );
 
@@ -352,4 +289,16 @@ const App: React.FC = () => {
                 </div>
               )}
               {processedStatements.some(s => s.isValid) && (
-                <div className="w-full xl:w-2/3 space-y-8 animate
+                <div className="w-full xl:w-2/3 space-y-8 animate-in slide-in-from-right duration-700 delay-200">
+                   <StatsChart transactions={allTransactions} summary={currentBatchSummary} />
+                   <TransactionList transactions={allTransactions} onExport={handleExportAllCSV} />
+                </div>
+              )}
+            </div>
+          </>
+      </main>
+    </div>
+  );
+};
+
+export default App;

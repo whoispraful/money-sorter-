@@ -1,6 +1,5 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Transaction, StatementData } from "../types";
-import { getApiKey } from "../config";
 
 // Helper to generate simple IDs
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -55,22 +54,7 @@ const transactionSchema: Schema = {
 
 export const parseStatement = async (file: File): Promise<Omit<StatementData, 'id'>> => {
   try {
-    const apiKey = getApiKey();
-    
-    // Fallback: If no static key, try to grab from the AI Studio helper if available (for preview environments)
-    let activeKey = apiKey;
-    if (!activeKey) {
-        const win = window as any;
-        if (win.aistudio && await win.aistudio.hasSelectedApiKey()) {
-            throw new Error("API Key not found in environment. Use the 'Connect Key' button in the UI.");
-        }
-    }
-
-    if (!activeKey) {
-        throw new Error("MISSING_API_KEY");
-    }
-
-    const ai = new GoogleGenAI({ apiKey: activeKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const filePart = await fileToGenerativePart(file);
 
     const prompt = `
@@ -151,15 +135,6 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
 
   } catch (error: any) {
     console.error("Gemini Extraction Error:", error);
-    if (error.message === "MISSING_API_KEY") {
-        throw new Error("API Key config error. Try adding ?key=AIza... to your URL for a quick fix.");
-    }
-    if (error.message.includes("403")) {
-        throw new Error("API Key is invalid or expired.");
-    }
-    if (error.message.includes("API Key not found in environment")) {
-         throw error;
-    }
     throw new Error("Could not process file. Ensure it is a clear image or PDF.");
   }
 };
