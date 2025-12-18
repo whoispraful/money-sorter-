@@ -78,7 +78,7 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           filePart,
@@ -143,10 +143,8 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
     let finalMessage = error.message || "Could not process file.";
     
     // Robust JSON Error Extraction
-    // Google SDK sometimes throws an Error where the message is a raw JSON string.
     if (typeof finalMessage === 'string' && (finalMessage.includes("{") || finalMessage.includes("["))) {
         try {
-            // Attempt to find the JSON object within the error string
             const firstBrace = finalMessage.indexOf('{');
             const lastBrace = finalMessage.lastIndexOf('}');
             
@@ -154,25 +152,22 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
                 const potentialJson = finalMessage.substring(firstBrace, lastBrace + 1);
                 const errorObj = JSON.parse(potentialJson);
                 
-                // Navigate common error structures
                 if (errorObj.error && errorObj.error.message) {
                     finalMessage = errorObj.error.message;
                 } else if (errorObj.message) {
                     finalMessage = errorObj.message;
                 }
             }
-        } catch (e) {
-            // If parsing fails, we stick to the original message
-        }
+        } catch (e) {}
     }
 
     // User-Friendly Error Mapping
     if (finalMessage.includes("Requests from referer") && finalMessage.includes("blocked")) {
-        finalMessage = "Access Denied: Your API Key is restricted. Please go to Google AI Studio > API Key > Application Restrictions and select 'None' or add this website URL.";
+        finalMessage = "Access Denied: Your API Key is restricted. Please go to Google Cloud Console > APIs & Services > Credentials > API Key. Under 'Application restrictions', select 'None' and save. It may take 5 minutes to take effect.";
     } else if (finalMessage.includes("API Key is missing")) {
         finalMessage = "API Key is missing. Check your environment variables.";
-    } else if (finalMessage.includes("403")) {
-        finalMessage = "Permission Denied (403). Check API Key restrictions.";
+    } else if (finalMessage.includes("403") || finalMessage.includes("PERMISSION_DENIED")) {
+        finalMessage = "Permission Denied (403). Ensure 'Generative Language API' is enabled in your Google Cloud Project and your key has no domain restrictions.";
     }
 
     throw new Error(finalMessage);
