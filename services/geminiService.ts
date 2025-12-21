@@ -48,7 +48,10 @@ const transactionSchema: Schema = {
 export const parseStatement = async (file: File): Promise<Omit<StatementData, 'id'>> => {
   try {
     const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("API Key is missing.");
+    
+    if (!apiKey || apiKey === "undefined" || apiKey.length < 10) {
+      throw new Error("CRITICAL: API Key is missing. Please set the API_KEY environment variable in your deployment dashboard.");
+    }
 
     const ai = new GoogleGenAI({ apiKey });
     const filePart = await fileToGenerativePart(file);
@@ -58,7 +61,7 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
       contents: {
         parts: [
           filePart,
-          { text: "Extract all transactions from this bank statement/receipt. Convert all amounts to USD in the 'amountInUSD' field. Format as JSON." }
+          { text: "Extract all transactions from this bank statement/receipt. Convert all amounts to USD. Return only valid JSON." }
         ]
       },
       config: {
@@ -73,7 +76,7 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
        return {
          fileName: file.name,
          isValid: false,
-         validationError: parsed.validationReason || "Invalid financial document.",
+         validationError: parsed.validationReason || "The uploaded file is not a valid financial document.",
          transactions: [],
          summary: { totalCredits: 0, totalDebits: 0, netFlow: 0 }
        };
@@ -97,10 +100,14 @@ export const parseStatement = async (file: File): Promise<Omit<StatementData, 'i
     };
 
   } catch (error: any) {
+    console.error("Gemini Error Details:", error);
     let msg = error.message || "Extraction failed.";
-    if (msg.includes("403") || msg.includes("referer")) {
-      msg = "API Key Restriction Error. Please wait 5 minutes for your Google Console changes to take effect, then refresh this page.";
+    
+    // Help users solve the specific Google Console issue
+    if (msg.includes("403") || msg.includes("PERMISSION_DENIED") || msg.includes("referer")) {
+      msg = "GOOGLE PERMISSION ERROR: 1. Go to Google Cloud Console > Credentials. 2. Set 'Application restrictions' to 'NONE'. 3. Set 'API restrictions' to 'DON'T RESTRICT KEY'. 4. WAIT 5 MINUTES for Google to update. 5. Refresh this page.";
     }
+    
     throw new Error(msg);
   }
 };
